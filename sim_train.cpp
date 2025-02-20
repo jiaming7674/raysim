@@ -100,8 +100,8 @@ void GenerateTrack()
 
   // 設定多邊形的中心與半徑參數
   Vector2 center = {screenWidth / 2.0f, screenHeight / 2.0f};
-  float baseRadius = 360.0f;     // 基本半徑
-  float radiusVariation = 50.0f; // 半徑隨機變化
+  float baseRadius = 300.0f;     // 基本半徑
+  float radiusVariation = 150.0f; // 半徑隨機變化
 
   // 為了產生凸多邊形，依序以角度排序（在此用固定間隔再加上微調）
   for (int i = 0; i < numVertices; i++)
@@ -128,6 +128,11 @@ void GenerateTrack()
     // 計算兩向量間的夾角（內角）
     float dotVal = ClampFloat(Vector2DotProduct(d1, d2), -1.0f, 1.0f);
     float theta = acosf(dotVal); // 夾角（弧度）
+
+    // 判斷當前頂點是凸角還是凹角
+    // 依據 cross product 與整體多邊形方向來判斷    
+    float cross = d1.x * d2.y - d1.y * d2.x;
+    bool convex = (cross >= 0) ? true : false;
 
     // fillet（圓角）的設計參數
     // 我們希望選擇一個 fillet 半徑 R，並依據公式 d = R / tan(theta/2)
@@ -161,7 +166,7 @@ void GenerateTrack()
     // 計算圓弧起始角度
     float startAngle = atan2f(S.y - arcCenter.y, S.x - arcCenter.x);
     // 計算圓弧掃過角度。標準 fillet 的圓弧角度 = PI - interiorAngle
-    float arcAngle = PI - theta;
+    float arcAngle = convex ? theta - PI : PI - theta;
 
     // 儲存此頂點的圓角資料
     vertexRounds[i] = {S, E, arcCenter, R, startAngle, arcAngle};
@@ -264,10 +269,19 @@ int main(void)
   const float carSpacing = 35.0f;   // 車廂間距（前後車之間的距離）
   const Vector2 carSize = {30, 15}; // 車廂大小
 
+  bool resetTrack = false;
+
   SetTargetFPS(60);
 
   while (!WindowShouldClose()) // 主遊戲迴圈
   {
+    if (IsKeyDown(KEY_R)) {
+      // 重新產生軌道
+      if (resetTrack == false) GenerateTrack();
+      resetTrack = true;
+    }
+    else resetTrack = false;
+
     float dt = GetFrameTime();
 
     // --- 更新邏輯 ---
@@ -353,6 +367,38 @@ int main(void)
 
     // 顯示速度資訊
     DrawText(TextFormat("Speed: %.1f", trainSpeed), 10, 10, 20, DARKGRAY);
+
+#ifdef __DEBUG__
+    // -----------------
+    // 偵錯視覺化：
+    // 對每個弧段，繪製圓心、圓弧完整圓周、以及弧的起點與終點
+    // -----------------
+    for (size_t i = 0; i < trackSegments.size(); i++)
+    {
+      if (trackSegments[i].type == ARC)
+      {
+        // 繪製圓心（藍色小圓點）
+        DrawCircleV(trackSegments[i].center, 4, BLUE);
+
+        // 繪製圓弧所在完整圓的外框（淺灰色）
+        DrawCircleLines(trackSegments[i].center.x, trackSegments[i].center.y, trackSegments[i].radius, LIGHTGRAY);
+
+        // 計算弧線的起點與終點
+        Vector2 arcStart = {trackSegments[i].center.x + cosf(trackSegments[i].startAngle) * trackSegments[i].radius,
+                            trackSegments[i].center.y + sinf(trackSegments[i].startAngle) * trackSegments[i].radius};
+        Vector2 arcEnd = {trackSegments[i].center.x + cosf(trackSegments[i].startAngle + trackSegments[i].arcAngle) * trackSegments[i].radius,
+                          trackSegments[i].center.y + sinf(trackSegments[i].startAngle + trackSegments[i].arcAngle) * trackSegments[i].radius};
+
+        // 繪製起點（綠色）與終點（紅色）
+        DrawCircleV(arcStart, 4, GREEN);
+        DrawCircleV(arcEnd, 4, RED);
+
+        // 繪製從圓心到起點與終點的連線（藍色）
+        DrawLineV(trackSegments[i].center, arcStart, BLUE);
+        DrawLineV(trackSegments[i].center, arcEnd, BLUE);
+      }
+    }  
+#endif  
 
     EndDrawing();
   }
